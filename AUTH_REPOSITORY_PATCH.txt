@@ -1,0 +1,67 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH: auth_repository.dart — replace the _getCustomToken placeholder
+// with the real HTTP callable implementation.
+//
+// In lib/repositories/auth_repository.dart, replace the entire
+// _getCustomToken method with the code below.
+// Also add these imports at the top of the file:
+//
+//   import 'package:flutter_dotenv/flutter_dotenv.dart';
+//   import 'package:http/http.dart' as http show post;
+// ─────────────────────────────────────────────────────────────────────────────
+
+/*
+  Future<String> _getCustomToken(String uid) async {
+    final base = dotenv.env['CLOUD_FUNCTION_BASE_URL'];
+    if (base == null || base.isEmpty) {
+      throw const AuthException(
+        'Cloud Function base URL not configured in .env.',
+        code: 'missing-config',
+      );
+    }
+
+    final response = await http.post(
+      Uri.parse('$base/issueCustomToken'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'data': {
+          'uid': uid,
+          'passwordHash': '', // passwordHash is verified server-side from Firestore
+        }
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw AuthException(
+        'Custom token request failed (${response.statusCode}).',
+        code: 'cf-error',
+      );
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final token = body['result']?['token'] as String?;
+
+    if (token == null || token.isEmpty) {
+      throw const AuthException(
+        'Custom token not returned by Cloud Function.',
+        code: 'token-missing',
+      );
+    }
+
+    return token;
+  }
+*/
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTE: The loginWithPhoneAndPassword method must also pass the hashed
+// password to _getCustomToken so the Cloud Function can verify it.
+// Update the call site to:
+//
+//   final token = await _getCustomToken(uid, passwordHash: _hashPassword(password));
+//
+// And update the method signature:
+//   Future<String> _getCustomToken(String uid, {required String passwordHash})
+//
+// Then in the body, change the 'data' payload to:
+//   'data': { 'uid': uid, 'passwordHash': passwordHash }
+// ─────────────────────────────────────────────────────────────────────────────
