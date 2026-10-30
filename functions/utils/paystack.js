@@ -1,95 +1,106 @@
+'use strict';
+
 const axios = require('axios');
 
 const BASE_URL = 'https://api.paystack.co';
+const REQUEST_TIMEOUT_MS = 15000;
 
-function headers() {
-  const key = process.env.PAYSTACK_SECRET_KEY;
-  if (!key) throw new Error('PAYSTACK_SECRET_KEY env var not set.');
+function headers(secretKey) {
+  if (typeof secretKey !== 'string' || !secretKey) {
+    throw new Error('Paystack secret is unavailable.');
+  }
   return {
-    Authorization: `Bearer ${key}`,
+    Authorization: 'Bearer ' + secretKey,
     'Content-Type': 'application/json',
   };
 }
 
-/**
- * Charge a saved card using a reusable authorization code.
- * @param {string} authCode  - Paystack authorization_code
- * @param {string} email     - Customer email
- * @param {number} amountKobo - Amount in kobo
- * @param {string} reference  - Unique transaction reference
- */
-async function chargeAuthorization(authCode, email, amountKobo, reference) {
-  const { data } = await axios.post(
-    `${BASE_URL}/charge/authorization`,
-    {
-      authorization_code: authCode,
-      email,
-      amount: amountKobo,
-      reference,
-    },
-    { headers: headers() }
-  );
-  if (!data.status) throw new Error(data.message || 'Charge failed.');
-  return data.data;
+async function request(method, path, secretKey, data) {
+  try {
+    const response = await axios.request({
+      method,
+      url: BASE_URL + path,
+      headers: headers(secretKey),
+      data,
+      timeout: REQUEST_TIMEOUT_MS,
+    });
+    const envelope = response.data;
+    if (!envelope || envelope.status !== true || !envelope.data) {
+      const error = new Error('Paystack did not accept the request.');
+      error.outcomeUnknown = true;
+      throw error;
+    }
+    return envelope.data;
+  } catch (cause) {
+    if (cause && typeof cause.outcomeUnknown === 'boolean') throw cause;
+    const httpStatus = cause && cause.response && cause.response.status;
+    const error = new Error(httpStatus
+      ? 'Paystack request failed with HTTP ' + httpStatus + '.'
+      : 'Paystack request outcome is unknown.');
+    error.outcomeUnknown = !httpStatus || httpStatus >= 500;
+    throw error;
+  }
 }
 
-/**
- * Create a Paystack transfer recipient (bank account for payout).
- */
-async function createTransferRecipient(name, accountNumber, bankCode) {
-  const { data } = await axios.post(
-    `${BASE_URL}/transferrecipient`,
-    {
-      type: 'nuban',
-      name,
-      account_number: accountNumber,
-      bank_code: bankCode,
-      currency: 'NGN',
-    },
-    { headers: headers() }
-  );
-  if (!data.status) throw new Error(data.message || 'Failed to create recipient.');
-  return data.data;
+function initializeTransaction(email, amountKobo, reference, secretKey) {
+  return request('post', '/transaction/initialize', secretKey, {
+    email,
+    amount: amountKobo,
+    reference,
+    channels: ['card'],
+  });
 }
 
-/**
- * Initiate a transfer (payout) to a recipient code.
- * @param {string} recipientCode - Paystack recipient_code
- * @param {number} amountKobo
- * @param {string} reference     - Unique transfer reference
- * @param {string} reason        - Human-readable reason
- */
-async function initiateTransfer(recipientCode, amountKobo, reference, reason) {
-  const { data } = await axios.post(
-    `${BASE_URL}/transfer`,
-    {
-      source: 'balance',
-      amount: amountKobo,
-      recipient: recipientCode,
-      reference,
-      reason: reason || 'ROSCA payout — Circle Vault',
-    },
-    { headers: headers() }
-  );
-  if (!data.status) throw new Error(data.message || 'Transfer failed.');
-  return data.data;
+function verifyTransaction(reference, secretKey) {
+  return request('get', '/transaction/verify/' + encodeURIComponent(reference), secretKey);
 }
 
-/**
- * Verify a transfer by reference.
- */
-async function verifyTransfer(reference) {
-  const { data } = await axios.get(
-    `${BASE_URL}/transfer/verify/${reference}`,
-    { headers: headers() }
-  );
-  if (!data.status) throw new Error(data.message || 'Transfer verification failed.');
-  return data.data;
+function chargeAuthorization(authCode, email, amountKobo, reference, secretKey) {
+  return request('post', '/transaction/charge_authorization', secretKey, {
+    authorization_code: authCode,
+    email,
+    amount: amountKobo,
+    reference,
+    currency: 'NGN',
+    queue: true,
+  });
+}
+
+function createTransferRecipient(name, accountNumber, bankCode, secretKey) {
+  return request('post', '/transferrecipient', secretKey, {
+    type: 'nuban',
+    name,
+    account_number: accountNumber,
+    bank_code: bankCode,
+    currency: 'NGN',
+  });
+}
+
+function initiateTransfer(recipientCode, amountKobo, reference, reason, secretKey) {
+  return request('post', '/transfer', secretKey, {
+    source: 'balance',
+    amount: amountKobo,
+    recipient: recipientCode,
+    reference,
+    reason: reason || 'ROSCA payout - Circle Vault',
+  });
+}
+
+function verifyTransfer(reference, secretKey) {
+  return request('get', '/transfer/verify/' + encodeURIComponent(reference), secretKey);
+}
+
+function getBankList(secretKey) {
+  return request('get', '/bank?country=nigeria&perPage=100', secretKey);
 }
 
 module.exports = {
   chargeAuthorization,
   createTransferRecipient,
+  getBankList,
   initiateTransfer,
+  initializeTransaction,
+  verifyTransaction,
   verifyTransfer,
 };
+

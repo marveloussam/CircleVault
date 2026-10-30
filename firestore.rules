@@ -2,102 +2,99 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // ── Helpers ────────────────────────────────────────────────────────────────
-
-    // Returns true if the request is from a signed-in user.
     function isAuth() {
       return request.auth != null;
     }
 
-    // Returns true if the signed-in user's uid matches the given uid.
     function isUser(uid) {
       return isAuth() && request.auth.uid == uid;
     }
 
-    // Returns true if the signed-in user is a member of the given circle.
     function isCircleMember(circleId) {
       return isAuth() &&
         exists(/databases/$(database)/documents/circles/$(circleId)/members/$(request.auth.uid));
     }
 
-    // Returns true if the signed-in user is the admin of the given circle.
     function isCircleAdmin(circleId) {
       return isAuth() &&
         get(/databases/$(database)/documents/circles/$(circleId)).data.adminUid == request.auth.uid;
     }
 
-    // ── Users ──────────────────────────────────────────────────────────────────
-    // Users can only read and write their own document.
-
     match /users/{uid} {
       allow read: if isUser(uid);
-      allow create: if isUser(uid);
-      allow update: if isUser(uid);
+      allow create: if isUser(uid)
+        && request.resource.data.keys().hasOnly([
+          'name', 'email', 'createdAt', 'isVerified',
+          'hasLinkedCard', 'canReceivePayouts'
+        ])
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.isVerified == false
+        && request.resource.data.hasLinkedCard == false
+        && request.resource.data.canReceivePayouts == false;
+      allow update: if isUser(uid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'email', 'updatedAt'])
+        && request.resource.data.email == request.auth.token.email
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['updatedAt'])
+          || request.resource.data.updatedAt == request.time);
       allow delete: if false;
     }
-
-    // ── Circles ────────────────────────────────────────────────────────────────
-    // Any authenticated user can create a circle.
-    // Only members can read a circle.
-    // Only the admin can update or delete a circle.
 
     match /circles/{circleId} {
       allow read: if isCircleMember(circleId);
-      allow create: if isAuth();
-      allow update: if isCircleAdmin(circleId);
-      allow delete: if false;
-
-      // ── Members sub-collection ─────────────────────────────────────────────
-      // Members can read the members list.
-      // Only the circle admin can add or update members.
-      // Cloud Functions can write freely (service account bypasses rules).
+      // Circle creation and all financial or membership mutations are server-only.
+      allow create, update, delete: if false;
 
       match /members/{uid} {
         allow read: if isCircleMember(circleId);
-        allow create: if isCircleAdmin(circleId);
-        allow update: if isCircleAdmin(circleId);
-        allow delete: if false;
+        allow create, update, delete: if false;
       }
-
-      // ── Transactions sub-collection ────────────────────────────────────────
-      // Members can READ all transactions (shared ledger).
-      // WRITES are restricted to Cloud Functions only (service account).
-      // Client-side writes are blocked in production.
 
       match /transactions/{txId} {
         allow read: if isCircleMember(circleId);
-        allow write: if false; // Cloud Functions only
+        allow write: if false;
       }
-
-      // ── Rotation slots sub-collection ──────────────────────────────────────
-      // Members can read rotation slots.
-      // Writes are Cloud Functions only.
 
       match /rotationSlots/{slotId} {
         allow read: if isCircleMember(circleId);
-        allow create: if isCircleAdmin(circleId); // initial creation allowed
-        allow update: if false; // Cloud Functions only
-        allow delete: if false;
+        allow write: if false;
+      }
+
+      match /paymentAttempts/{attemptId} {
+        allow read, write: if false;
       }
     }
 
-    // ── AI Tips ────────────────────────────────────────────────────────────────
-    // Users can only read their own tips.
-    // Tips are written by the Flutter app (via AiAdvisoryRepository) on behalf
-    // of the authenticated user, and can be dismissed (update wasDismissed).
-
     match /aiTips/{tipId} {
       allow read: if isAuth() && resource.data.uid == request.auth.uid;
-      allow create: if isAuth() && request.resource.data.uid == request.auth.uid;
-      allow update: if isAuth() && resource.data.uid == request.auth.uid
+      allow create: if isAuth()
+        && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuth()
+        && resource.data.uid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['wasDismissed']);
       allow delete: if false;
     }
 
-    // ── Deny everything else ───────────────────────────────────────────────────
+    match /aiUsage/{uid} {
+      allow read, write: if false;
+    }
+
+    match /users/{uid}/private/{docId} {
+      allow read, write: if false;
+    }
+
+    match /users/{uid}/paymentSetups/{setupId} {
+      allow read, write: if false;
+    }
+
+    match /paystackWebhookEvents/{eventId} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
+

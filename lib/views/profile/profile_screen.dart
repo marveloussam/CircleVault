@@ -42,8 +42,7 @@ class ProfileScreen extends StatelessWidget {
           final circles = homeVm.circles;
           final activeCount =
               circles.where((c) => c.status.toValue() == 'active').length;
-          final hasCard = user?.paystackAuthorizationCode != null &&
-              user!.paystackAuthorizationCode!.isNotEmpty;
+          final hasCard = user?.hasLinkedCard ?? false;
 
           // Member since — derived from user.createdAt
           final memberSince = user?.createdAt != null

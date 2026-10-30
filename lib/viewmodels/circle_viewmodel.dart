@@ -150,7 +150,7 @@ class CircleViewModel extends ChangeNotifier {
   /// The UI can show a confirmation card before calling [confirmAddResolvedMember].
   ///
   /// Returns the [UserModel] on success, null if not found.
-  Future<UserModel?> lookupUserByEmail(String email) async {
+  Future<UserModel?> lookupUserByEmail(String email, {required String circleId}) async {
     final trimmedEmail = email.trim().toLowerCase();
     debugPrint('[CircleViewModel] lookupUserByEmail() → email=$trimmedEmail');
 
@@ -159,7 +159,7 @@ class CircleViewModel extends ChangeNotifier {
     _resolvedUser = null;
 
     try {
-      final user = await _userRepo.getUserByEmail(trimmedEmail);
+      final user = await _userRepo.getUserByEmail(trimmedEmail, circleId: circleId);
       if (user == null) {
         _setError('No CircleVault account found with that email.');
         return null;
