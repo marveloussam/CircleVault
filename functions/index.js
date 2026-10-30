@@ -238,6 +238,18 @@ async function processMemberContribution(circleId, circle, memberDoc) {
     return false;
   }
 
+  const now = Date.now();
+  const priorSnap = await attemptRef.get();
+  if (priorSnap.exists) {
+    const prior = priorSnap.data();
+    const priorDecision = state.contributionAction(prior, now);
+    if (priorDecision.action === 'skip') return prior.status === 'succeeded';
+    if (priorDecision.action === 'reconcile') {
+      return reconcileContribution(circleId, round, uid, attemptRef, prior);
+    }
+    if (priorDecision.action === 'review') return false;
+  }
+
   const [userSnap, paymentSnap] = await Promise.all([
     db.doc(paths.userDoc(uid)).get(),
     db.doc(privatePaymentPath(uid)).get(),
@@ -254,8 +266,6 @@ async function processMemberContribution(circleId, circle, memberDoc) {
     logger.warn('[contributions] Member email is unavailable.', { circleId, round, memberUid: uid });
     return false;
   }
-
-  const now = Date.now();
   const claim = await db.runTransaction(async (tx) => {
     const snap = await tx.get(attemptRef);
     const attempt = snap.exists ? snap.data() : null;
