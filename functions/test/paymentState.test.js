@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { classifyChargeStatus, contributionAction, isVerifiedContribution, payoutAction, stableReference, validPaystackSignature } = require('../utils/paymentState');
+const paths = require('../utils/firestoreHelpers');
 
 test('only actual Paystack transaction status determines charge state', () => {
   assert.equal(classifyChargeStatus({ status: 'success' }), 'succeeded');
@@ -38,6 +39,7 @@ test('payout decisions reconcile unresolved operations and skip completed payout
   for (const payoutStatus of ['pending', 'unknown', 'processing']) assert.equal(payoutAction({ payoutStatus }), 'reconcile');
   assert.equal(payoutAction({ payoutStatus: 'succeeded' }), 'skip');
   assert.equal(payoutAction({ disbursed: true, payoutStatus: 'failed' }), 'skip');
+  assert.equal(payoutAction({ disbursed: true }), 'skip');
   assert.equal(payoutAction({ payoutStatus: 'failed' }), 'retry');
 });
 
@@ -58,3 +60,8 @@ test('webhook signatures use HMAC SHA512 and reject mismatches', () => {
   assert.equal(validPaystackSignature(rawBody, signature, ''), false);
 });
 
+
+test('backend paths include collections used by membership and lookup callables', () => {
+  assert.equal(paths.rotationSlotsCollection('c1'), 'circles/c1/rotationSlots');
+  assert.equal(paths.usersCollection(), 'users');
+});

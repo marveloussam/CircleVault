@@ -32,8 +32,9 @@ function contributionAction(attempt, nowMillis) {
 }
 
 function payoutAction(slot) {
-  if (!slot || !slot.payoutStatus || slot.payoutStatus === 'not_started') return 'initiate';
+  if (!slot) return 'initiate';
   if (slot.disbursed || slot.payoutStatus === 'succeeded') return 'skip';
+  if (!slot.payoutStatus || slot.payoutStatus === 'not_started') return 'initiate';
   if (['processing', 'pending', 'unknown'].includes(slot.payoutStatus)) return 'reconcile';
   if (slot.payoutStatus === 'failed') return 'retry';
   return 'review';

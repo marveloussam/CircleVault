@@ -718,11 +718,15 @@ exports.lookupUserByEmail = onCall({ region: 'us-central1' }, async (request) =>
   if (!circleSnap.exists || circleSnap.data().adminUid !== callerUid || circleSnap.data().status !== 'pending') {
     throw new HttpsError('permission-denied', 'Only the admin of a pending circle can look up members.');
   }
-  const matches = await db.collection(paths.usersCollection()).where('email', '==', email).limit(1).get();
-  if (matches.empty) return null;
-  const doc = matches.docs[0];
-  const data = doc.data();
-  return { uid: doc.id, name: String(data.name || '').slice(0, 120) };
+  let authUser;
+  try { authUser = await admin.auth().getUserByEmail(email); }
+  catch (error) {
+    if (error && error.code === 'auth/user-not-found') return null;
+    throw error;
+  }
+  const userSnap = await db.doc(paths.userDoc(authUser.uid)).get();
+  if (!userSnap.exists) return null;
+  return { uid: authUser.uid, name: String(userSnap.data().name || '').slice(0, 120) };
 });
 
 exports.generateFinancialTip = onCall(

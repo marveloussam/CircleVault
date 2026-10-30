@@ -66,7 +66,7 @@ class AuthRepository {
 
       await _firestore.doc(FirestorePaths.userDoc(user.uid)).set({
         'name': name,
-        'email': email,
+        'email': user.email ?? email,
         'hasLinkedCard': false,
         'canReceivePayouts': false,
         'createdAt': FieldValue.serverTimestamp(),

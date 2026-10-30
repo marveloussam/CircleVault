@@ -19,7 +19,17 @@ class PaymentViewModel extends ChangeNotifier {
   void _setState(ViewState s) { _state = s; notifyListeners(); }
   void _setError(String msg) { _errorMessage = msg; _setState(ViewState.error); }
   void clearError() { _errorMessage = null; _setState(ViewState.idle); }
-  Future<void> loadCard(String uid) async { try { _card = await _paymentRepo.getPaymentMethod(); notifyListeners(); } catch (_) {} }
+  Future<void> loadCard(String uid) async {
+    try {
+      final method = await _paymentRepo.getPaymentMethod();
+      _card = {
+        'hasLinkedCard': method['hasLinkedCard'] == true,
+        'paystackCardLast4': method['last4'] ?? '',
+        'paystackCardBank': method['bank'] ?? '',
+      };
+      notifyListeners();
+    } catch (_) {}
+  }
   Future<({String authorizationUrl, String reference})?> prepareCardSetup({required String uid}) async {
     _setState(ViewState.loading); _errorMessage = null; _cardAdded = false;
     try {
@@ -31,7 +41,17 @@ class PaymentViewModel extends ChangeNotifier {
   }
   Future<bool> verifyAndSaveCard({required String uid, required String reference}) async {
     _setState(ViewState.loading); _errorMessage = null;
-    try { _card = await _paymentRepo.verifyTransaction(reference); _cardAdded = _card?['hasLinkedCard'] == true; _setState(ViewState.success); return _cardAdded; }
+    try {
+      final method = await _paymentRepo.verifyTransaction(reference);
+      _card = {
+        'hasLinkedCard': method['hasLinkedCard'] == true,
+        'paystackCardLast4': method['last4'] ?? '',
+        'paystackCardBank': method['bank'] ?? '',
+      };
+      _cardAdded = _card?['hasLinkedCard'] == true;
+      _setState(ViewState.success);
+      return _cardAdded;
+    }
     catch (_) { _setError('Card verification failed. Please try again.'); return false; }
   }
   Future<void> removeCard(String uid) async {
