@@ -1,9 +1,8 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
 import '../core/constants/firestore_paths.dart';
@@ -15,33 +14,14 @@ import '../models/user_model.dart';
 
 class AiAdvisoryRepository {
   AiAdvisoryRepository({
-    http.Client? client,
     FirebaseFirestore? firestore,
-  })  : _client = client ?? http.Client(),
-        _firestore = firestore ?? FirebaseFirestore.instance;
+    FirebaseFunctions? functions,
+  }) : _firestore = firestore ?? FirebaseFirestore.instance,
+       _functions = functions ?? FirebaseFunctions.instance;
 
-  final http.Client _client;
   final FirebaseFirestore _firestore;
+  final FirebaseFunctions _functions;
   final _uuid = const Uuid();
-
-  static const String _geminiModel = 'gemini-2.5-flash-lite';
-  static const String _geminiBaseUrl =
-      'https://generativelanguage.googleapis.com/v1beta/models';
-
-  String get _apiKey {
-    final key = dotenv.env['GEMINI_API_KEY'];
-    if (key == null || key.isEmpty) {
-      throw const AiAdvisoryException(
-        'Gemini API key not configured. Add GEMINI_API_KEY to your .env file.',
-        code: 'missing-key',
-      );
-    }
-    return key;
-  }
-
-  Uri get _endpoint => Uri.parse(
-    '$_geminiBaseUrl/$_geminiModel:generateContent?key=$_apiKey',
-  );
 
   // ─── Generate a personalised tip ─────────────────────────────────────────
 
@@ -53,10 +33,6 @@ class AiAdvisoryRepository {
     int circleCount = 0,
     int pendingContributions = 0,
   }) async {
-    debugPrint('[AiAdvisoryRepository] generateTip() → model=$_geminiModel, '
-        'txCount=${recentTransactions.length}, circles=$circleCount, '
-        'pending=$pendingContributions');
-
     try {
       final userContext = _buildContext(
         user,
@@ -66,102 +42,9 @@ class AiAdvisoryRepository {
       );
       debugPrint('[AiAdvisoryRepository] Prompt context: $userContext');
 
-      final response = await _client.post(
-        _endpoint,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'systemInstruction': {
-            'parts': [
-              {
-                'text':
-                'You are a personal finance advisor for Nigerian users '
-                    'participating in a ROSCA savings group called Circle Vault. '
-                    'Give one concise, actionable, culturally relevant financial tip. '
-                    'Be warm and encouraging. Write in plain English. Under 80 words. '
-                    'Do not use bullet points or numbered lists — one flowing tip only.',
-              }
-            ],
-          },
-          'contents': [
-            {
-              'role': 'user',
-              'parts': [
-                {'text': userContext},
-              ],
-            }
-          ],
-          'generationConfig': {
-            'maxOutputTokens': 256,
-            'temperature': 0.8,
-            'topP': 0.95,
-          },
-          'safetySettings': [
-            {
-              'category': 'HARM_CATEGORY_HARASSMENT',
-              'threshold': 'BLOCK_MEDIUM_AND_ABOVE',
-            },
-            {
-              'category': 'HARM_CATEGORY_HATE_SPEECH',
-              'threshold': 'BLOCK_MEDIUM_AND_ABOVE',
-            },
-          ],
-        }),
-      );
-
-      debugPrint('[AiAdvisoryRepository] HTTP ${response.statusCode}');
-
-      if (response.statusCode != 200) {
-        final body = jsonDecode(response.body) as Map<String, dynamic>;
-        final message =
-            (body['error'] as Map<String, dynamic>?)?['message'] as String? ??
-                'Gemini API error (${response.statusCode}).';
-        debugPrint('[AiAdvisoryRepository] ❌ API error: $message');
-        throw AiAdvisoryException(message,
-            code: response.statusCode.toString());
-      }
-
-      final responseBody = jsonDecode(response.body) as Map<String, dynamic>;
-      final candidates = responseBody['candidates'] as List?;
-
-      if (candidates == null || candidates.isEmpty) {
-        throw const AiAdvisoryException(
-          'Gemini returned no candidates.',
-          code: 'no-candidates',
-        );
-      }
-
-      final firstCandidate = candidates.first as Map<String, dynamic>;
-      final finishReason = firstCandidate['finishReason'] as String?;
-      debugPrint('[AiAdvisoryRepository] finishReason=$finishReason');
-
-      if (finishReason == 'SAFETY') {
-        throw const AiAdvisoryException(
-          'Response blocked by Gemini safety filters.',
-          code: 'safety-block',
-        );
-      }
-
-      final content = firstCandidate['content'] as Map<String, dynamic>?;
-      final parts = content?['parts'] as List?;
-
-      if (parts == null || parts.isEmpty) {
-        throw const AiAdvisoryException(
-          'Empty content in Gemini response.',
-          code: 'empty-content',
-        );
-      }
-
-      final tipText =
-          (parts.first as Map<String, dynamic>)['text'] as String? ?? '';
-
-      if (tipText.trim().isEmpty) {
-        throw const AiAdvisoryException(
-          'Gemini returned empty tip text.',
-          code: 'empty-tip',
-        );
-      }
-
-      debugPrint('[AiAdvisoryRepository] ✅ Tip text: $tipText');
+      final result = await _functions.httpsCallable('generateFinancialTip').call({'context': userContext});
+      final tipText = (Map<String, dynamic>.from(result.data as Map)['tipText'] as String? ?? '').trim();
+      if (tipText.isEmpty) throw const AiAdvisoryException('The advisory service returned no tip.', code: 'empty-tip');
       final category = _inferCategory(tipText);
 
       final tip = AiTipModel(

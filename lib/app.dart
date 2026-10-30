@@ -75,7 +75,6 @@ class App extends StatelessWidget {
         ChangeNotifierProvider<PaymentViewModel>(
           create: (_) => PaymentViewModel(
             paymentRepository: paymentRepo,
-            userRepository: userRepo,
           ),
         ),
         ChangeNotifierProvider<AiAdvisoryViewModel>(

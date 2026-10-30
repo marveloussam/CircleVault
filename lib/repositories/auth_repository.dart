@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
@@ -66,8 +67,8 @@ class AuthRepository {
       await _firestore.doc(FirestorePaths.userDoc(user.uid)).set({
         'name': name,
         'email': email,
-        'paystackCustomerCode': null,
-        'paystackAuthorizationCode': null,
+        'hasLinkedCard': false,
+        'canReceivePayouts': false,
         'createdAt': FieldValue.serverTimestamp(),
         'isVerified': false,
       });
@@ -110,9 +111,7 @@ class AuthRepository {
     final verified = refreshedUser?.emailVerified ?? false;
 
     if (verified) {
-      await _firestore.doc(FirestorePaths.userDoc(refreshedUser!.uid)).update({
-        'isVerified': true,
-      });
+      await FirebaseFunctions.instance.httpsCallable('syncEmailVerification').call();
       debugPrint('[AuthRepo.checkEmailVerified] uid=${refreshedUser.uid} is now verified.');
     }
 

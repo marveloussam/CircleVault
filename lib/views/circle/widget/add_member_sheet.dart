@@ -57,7 +57,7 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     FocusScope.of(context).unfocus();
 
-    final user = await vm.lookupUserByEmail(_emailCtrl.text.trim());
+    final user = await vm.lookupUserByEmail(_emailCtrl.text.trim(), circleId: widget.circleId);
 
     if (!mounted) return;
     if (user != null) {

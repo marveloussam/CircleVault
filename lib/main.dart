@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'app.dart';
 
 
@@ -27,9 +26,6 @@ Future<void> main() async {
     ),
   );
 
-  // Load environment variables from .env
-  await dotenv.load(fileName: '.env');
-
   // Initialize Firebase
   await FirebaseService.initialize();
   if (kDebugMode) {
@@ -45,3 +41,4 @@ Future<void> main() async {
 
   runApp(const App());
 }
+
